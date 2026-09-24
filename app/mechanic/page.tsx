@@ -44,6 +44,7 @@ export default function MechanicPage() {
   const [openRequests, setOpenRequests] = useState<ServiceRequest[]>([]);
   const [assignedRequests, setAssignedRequests] = useState<ServiceRequest[]>([]);
   const [message, setMessage] = useState("");
+  const [stripeOnboardingComplete, setStripeOnboardingComplete] = useState<boolean | null>(null);
   const [openConversationId, setOpenConversationId] = useState<string | null>(null);
   const [messagesByRequest, setMessagesByRequest] = useState<
     Record<string, ServiceMessage[]>
@@ -66,6 +67,10 @@ export default function MechanicPage() {
 
 
   useEffect(() => {
+    if (stripeOnboardingComplete !== false) {
+      return;
+    }
+
     const container = stripeOnboardingContainerRef.current;
     const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
 
@@ -98,7 +103,7 @@ export default function MechanicPage() {
     return () => {
       container.replaceChildren();
     };
-  }, []);
+  }, [stripeOnboardingComplete]);
 
   useEffect(() => {
     loadJobs();
@@ -177,6 +182,21 @@ export default function MechanicPage() {
     if (role !== "mechanic") {
       window.location.href = "/auth/login";
       return;
+    }
+
+    const { data: providerProfile, error: providerProfileError } = await supabase
+      .from("provider_profiles")
+      .select("stripe_onboarding_complete")
+      .eq("user_id", user.id)
+      .single();
+
+    if (providerProfileError) {
+      console.error("Provider Stripe status error:", providerProfileError);
+      setStripeOnboardingComplete(false);
+    } else {
+      setStripeOnboardingComplete(
+        providerProfile?.stripe_onboarding_complete === true
+      );
     }
 
     const { data: openData, error: openError } = await supabase.rpc(
@@ -516,13 +536,15 @@ export default function MechanicPage() {
             {message}
           </p>
         )}
-        <section className="mt-6 rounded-lg border bg-white p-5 text-gray-900 shadow-sm">
-          <h2 className="text-xl font-bold">Stripe Payout Setup</h2>
-          <p className="mt-2 text-sm text-gray-600">
-            Complete Stripe onboarding so payouts can be enabled for your provider account.
-          </p>
-          <div ref={stripeOnboardingContainerRef} className="mt-4" />
-        </section>
+        {stripeOnboardingComplete === false && (
+          <section className="mt-6 rounded-lg border bg-white p-5 text-gray-900 shadow-sm">
+            <h2 className="text-xl font-bold">Stripe Payout Setup</h2>
+            <p className="mt-2 text-sm text-gray-600">
+              Complete Stripe onboarding so payouts can be enabled for your provider account.
+            </p>
+            <div ref={stripeOnboardingContainerRef} className="mt-4" />
+          </section>
+        )}
 
         <section className="mt-8">
           <h2 className="text-2xl font-bold text-gray-900">
