@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { loadConnectAndInitialize } from "@stripe/connect-js";
+
 import { createClient } from "@/lib/supabase/client";
 
 type ServiceRequest = {
@@ -45,10 +47,12 @@ type RepairAuthorization = {
 
 export default function TireTechnicianPage() {
   const supabase = createClient();
+  const stripeOnboardingContainerRef = useRef<HTMLDivElement | null>(null);
 
   const [openRequests, setOpenRequests] = useState<ServiceRequest[]>([]);
   const [assignedRequests, setAssignedRequests] = useState<ServiceRequest[]>([]);
   const [message, setMessage] = useState("");
+  const [stripeOnboardingComplete, setStripeOnboardingComplete] = useState<boolean | null>(null);
   const [openConversationId, setOpenConversationId] = useState<string | null>(null);
   const [messagesByRequest, setMessagesByRequest] = useState<
     Record<string, ServiceMessage[]>
@@ -65,6 +69,57 @@ export default function TireTechnicianPage() {
   const [laborAmounts, setLaborAmounts] = useState<Record<string, string>>({});
   const [submittingAuthorizationId, setSubmittingAuthorizationId] =
     useState<string | null>(null);
+
+  useEffect(() => {
+    if (stripeOnboardingComplete !== false) {
+      return;
+    }
+
+    const container = stripeOnboardingContainerRef.current;
+    const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
+
+    if (!container || !publishableKey) {
+      return;
+    }
+
+    const stripeConnectInstance = loadConnectAndInitialize({
+      publishableKey,
+      fetchClientSecret: async () => {
+        const createResponse = await fetch("/api/stripe/connect/create-account", {
+          method: "POST",
+        });
+
+        const createData = await createResponse.json();
+
+        if (!createResponse.ok) {
+          throw new Error(
+            createData.error || "Unable to create Stripe connected account"
+          );
+        }
+
+        const response = await fetch("/api/stripe/connect/account-session", {
+          method: "POST",
+        });
+
+        const data = await response.json();
+
+        if (!response.ok || !data.clientSecret) {
+          throw new Error(data.error || "Unable to start Stripe onboarding");
+        }
+
+        return data.clientSecret;
+      },
+    });
+
+    const onboardingElement =
+      stripeConnectInstance.create("account-onboarding");
+
+    container.replaceChildren(onboardingElement);
+
+    return () => {
+      container.replaceChildren();
+    };
+  }, [stripeOnboardingComplete]);
 
   useEffect(() => {
     loadJobs();
@@ -143,6 +198,25 @@ export default function TireTechnicianPage() {
     if (role !== "tire_technician") {
       window.location.href = "/auth/login";
       return;
+    }
+
+    await fetch("/api/stripe/connect/sync-status", {
+      method: "POST",
+    });
+
+    const { data: providerProfile, error: providerProfileError } = await supabase
+      .from("provider_profiles")
+      .select("stripe_onboarding_complete")
+      .eq("user_id", user.id)
+      .single();
+
+    if (providerProfileError) {
+      console.error("Provider Stripe status error:", providerProfileError);
+      setStripeOnboardingComplete(false);
+    } else {
+      setStripeOnboardingComplete(
+        providerProfile?.stripe_onboarding_complete === true
+      );
     }
 
     const { data: openData, error: openError } = await supabase.rpc(
@@ -573,6 +647,16 @@ export default function TireTechnicianPage() {
           <p className="mt-4 rounded bg-gray-100 p-3 text-gray-900">
             {message}
           </p>
+        )}
+
+        {stripeOnboardingComplete === false && (
+          <section className="mt-6 rounded-lg border bg-white p-5 text-gray-900 shadow-sm">
+            <h2 className="text-xl font-bold">Stripe Payout Setup</h2>
+            <p className="mt-2 text-sm text-gray-600">
+              Complete Stripe onboarding so payouts can be enabled for your provider account.
+            </p>
+            <div ref={stripeOnboardingContainerRef} className="mt-4" />
+          </section>
         )}
 
         <section className="mt-8">
