@@ -184,6 +184,10 @@ export default function MechanicPage() {
       return;
     }
 
+    await fetch("/api/stripe/connect/sync-status", {
+      method: "POST",
+    });
+
     const { data: providerProfile, error: providerProfileError } = await supabase
       .from("provider_profiles")
       .select("stripe_onboarding_complete")
