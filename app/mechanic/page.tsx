@@ -591,12 +591,6 @@ export default function MechanicPage() {
                       : "ASAP"}
                   </p>
                   <p className="mt-2">
-                    <strong>Service Timing:</strong>{" "}
-                    {request.request_type === "scheduled" && request.scheduled_for
-                      ? new Date(request.scheduled_for).toLocaleString()
-                      : "ASAP"}
-                  </p>
-                  <p className="mt-2">
                     <strong>Status:</strong>{" "}
                     {formatStatus(request.status)}
                   </p>
