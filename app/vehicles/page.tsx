@@ -19,9 +19,70 @@ export default function VehiclesPage() {
   const [year, setYear] = useState("");
   const [make, setMake] = useState("");
   const [model, setModel] = useState("");
+const [makes, setMakes] = useState<string[]>([]);
+const [models, setModels] = useState<string[]>([]);
+const [vehicleDataLoading, setVehicleDataLoading] = useState(false);
   const [vin, setVin] = useState("");
   const [licensePlate, setLicensePlate] = useState("");
   const [message, setMessage] = useState("");
+async function loadMakes() {
+  setVehicleDataLoading(true);
+
+  try {
+    const response = await fetch(
+      "https://vpic.nhtsa.dot.gov/api/vehicles/GetMakesForVehicleType/car?format=json"
+    );
+
+    const data = await response.json();
+
+    const uniqueMakes = Array.from(
+      new Set(
+        data.Results.map(
+          (item: { MakeName: string }) => item.MakeName
+        )
+      )
+    ).sort() as string[];
+
+    setMakes(uniqueMakes);
+  } catch {
+    setMessage("Unable to load vehicle makes. Please try again.");
+  } finally {
+    setVehicleDataLoading(false);
+  }
+}
+async function loadModels(selectedYear: string, selectedMake: string) {
+  if (!selectedYear || !selectedMake) {
+    setModels([]);
+    return;
+  }
+
+  setVehicleDataLoading(true);
+
+  try {
+    const response = await fetch(
+      `https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeYear/make/${encodeURIComponent(
+        selectedMake
+      )}/modelyear/${selectedYear}?format=json`
+    );
+
+    const data = await response.json();
+
+    const uniqueModels = Array.from(
+      new Set(
+        data.Results.map(
+          (item: { Model_Name: string }) => item.Model_Name
+        )
+      )
+    ).sort() as string[];
+
+    setModels(uniqueModels);
+  } catch {
+    setMessage("Unable to load vehicle models. Please try again.");
+    setModels([]);
+  } finally {
+    setVehicleDataLoading(false);
+  }
+}
 
   async function loadVehicles() {
     const {
@@ -68,6 +129,7 @@ export default function VehiclesPage() {
 
   useEffect(() => {
     loadVehicles();
+    loadMakes();
   }, []);
 
   async function addVehicle(e: React.FormEvent) {
@@ -163,33 +225,74 @@ export default function VehiclesPage() {
           </h2>
 
           <form onSubmit={addVehicle} className="mt-6 space-y-4">
-            <input
-              className="w-full rounded border p-3"
-              type="number"
-              placeholder="Year"
-              value={year}
-              onChange={(e) => setYear(e.target.value)}
-              required
-            />
+<select
+  className="w-full rounded border p-3"
+  value={year}
+  onChange={(e) => {
+    setYear(e.target.value);
+    setModel("");
+    setModels([]);
+    if (make) {
+      loadModels(e.target.value, make);
+    }
+  }}
+  required
+>
+  <option value="">Select Year</option>
+  {Array.from(
+    { length: 48 },
+    (_, index) => 2027 - index
+  ).map((vehicleYear) => (
+    <option key={vehicleYear} value={vehicleYear}>
+      {vehicleYear}
+    </option>
+  ))}
+</select>
+            <select
+  className="w-full rounded border p-3"
+  value={make}
+  onChange={(e) => {
+    const selectedMake = e.target.value;
+    setMake(selectedMake);
+    setModel("");
+    setModels([]);
+    if (year && selectedMake) {
+      loadModels(year, selectedMake);
+    }
+  }}
+  disabled={vehicleDataLoading || makes.length === 0}
+  required
+>
+  <option value="">
+    {vehicleDataLoading ? "Loading Makes..." : "Select Make"}
+  </option>
+  {makes.map((vehicleMake) => (
+    <option key={vehicleMake} value={vehicleMake}>
+      {vehicleMake}
+    </option>
+  ))}
+</select>
 
-            <input
-              className="w-full rounded border p-3"
-              type="text"
-              placeholder="Make"
-              value={make}
-              onChange={(e) => setMake(e.target.value)}
-              required
-            />
-
-            <input
-              className="w-full rounded border p-3"
-              type="text"
-              placeholder="Model"
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              required
-            />
-
+<select
+  className="w-full rounded border p-3"
+  value={model}
+  onChange={(e) => setModel(e.target.value)}
+  disabled={!year || !make || vehicleDataLoading || models.length === 0}
+  required
+>
+  <option value="">
+    {!year || !make
+      ? "Select Year and Make First"
+      : vehicleDataLoading
+        ? "Loading Models..."
+        : "Select Model"}
+  </option>
+  {models.map((vehicleModel) => (
+    <option key={vehicleModel} value={vehicleModel}>
+      {vehicleModel}
+    </option>
+  ))}
+</select>
             <input
               className="w-full rounded border p-3"
               type="text"
