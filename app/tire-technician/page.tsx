@@ -13,6 +13,8 @@ type ServiceRequest = {
   service_address: string | null;
   service_city: string | null;
   service_zip: string | null;
+  request_type: string;
+  scheduled_for: string | null;
   provider_id: string | null;
   vehicle_type: string | null;
   tire_issue: string | null;
@@ -694,6 +696,12 @@ export default function TireTechnicianPage() {
                   </p>
 
                   <p className="mt-2">
+                    <strong>Service Timing:</strong>{" "}
+                    {request.request_type === "scheduled" && request.scheduled_for
+                      ? new Date(request.scheduled_for).toLocaleString()
+                      : "ASAP"}
+                  </p>
+                  <p className="mt-2">
                     <strong>Status:</strong>{" "}
                     {formatStatus(request.status)}
                   </p>
@@ -743,6 +751,12 @@ export default function TireTechnicianPage() {
 
                     <FullLocation request={request} />
 
+                    <p className="mt-2">
+                      <strong>Service Timing:</strong>{" "}
+                      {request.request_type === "scheduled" && request.scheduled_for
+                        ? new Date(request.scheduled_for).toLocaleString()
+                        : "ASAP"}
+                    </p>
                     <p className="mt-2">
                       <strong>Status:</strong>{" "}
                       {formatStatus(request.status)}

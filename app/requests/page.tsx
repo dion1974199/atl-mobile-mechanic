@@ -20,6 +20,8 @@ type ServiceRequest = {
   service_address: string | null;
   service_city: string | null;
   service_zip: string | null;
+  request_type: string;
+  scheduled_for: string | null;
   vehicle_type: string | null;
   tire_issue: string | null;
   tire_size: string | null;
@@ -85,6 +87,8 @@ export default function RequestsPage() {
   const [serviceAddress, setServiceAddress] = useState("");
   const [serviceCity, setServiceCity] = useState("");
   const [serviceZip, setServiceZip] = useState("");
+  const [requestType, setRequestType] = useState<"asap" | "scheduled">("asap");
+  const [scheduledFor, setScheduledFor] = useState("");
 
   const [vehicleType, setVehicleType] = useState("");
   const [tireIssue, setTireIssue] = useState("");
@@ -235,6 +239,8 @@ export default function RequestsPage() {
         service_address,
         service_city,
         service_zip,
+        request_type,
+        scheduled_for,
         vehicle_type,
         tire_issue,
         tire_size,
@@ -543,6 +549,16 @@ export default function RequestsPage() {
       }
     }
 
+    if (requestType === "scheduled" && !scheduledFor) {
+      alert("Please select a date and time for your scheduled service.");
+      return;
+    }
+
+    if (requestType === "scheduled" && new Date(scheduledFor).getTime() <= Date.now()) {
+      alert("Please select a future date and time.");
+      return;
+    }
+
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -562,6 +578,8 @@ export default function RequestsPage() {
         service_address: serviceAddress || null,
         service_city: serviceCity,
         service_zip: serviceZip,
+        request_type: requestType,
+        scheduled_for: requestType === "scheduled" ? new Date(scheduledFor).toISOString() : null,
         vehicle_type:
           service === "tires" ? vehicleType : null,
         tire_issue:
@@ -598,6 +616,8 @@ export default function RequestsPage() {
     setServiceAddress("");
     setServiceCity("");
     setServiceZip("");
+    setRequestType("asap");
+    setScheduledFor("");
 
     setVehicleType("");
     setTireIssue("");
@@ -1033,6 +1053,54 @@ function getProviderLabel(service: string) {
                     setServiceZip(e.target.value)
                   }
                 />
+                <div className="mt-6">
+                  <h2 className="font-semibold">
+                    When do you need service?
+                  </h2>
+
+                  <div className="mt-3 grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRequestType("asap");
+                        setScheduledFor("");
+                      }}
+                      className={`rounded-md border-2 p-3 font-semibold ${
+                        requestType === "asap"
+                          ? "border-black bg-black text-white"
+                          : "border-gray-400 bg-white text-black"
+                      }`}
+                    >
+                      ASAP
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setRequestType("scheduled")}
+                      className={`rounded-md border-2 p-3 font-semibold ${
+                        requestType === "scheduled"
+                          ? "border-black bg-black text-white"
+                          : "border-gray-400 bg-white text-black"
+                      }`}
+                    >
+                      Schedule for Later
+                    </button>
+                  </div>
+
+                  {requestType === "scheduled" && (
+                    <div className="mt-4">
+                      <label className="block font-medium">
+                        Preferred Date & Time
+                      </label>
+                      <input
+                        type="datetime-local"
+                        className="mt-2 w-full rounded-md border-2 border-gray-400 bg-white p-3 text-black"
+                        value={scheduledFor}
+                        onChange={(e) => setScheduledFor(e.target.value)}
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
 
               <button
@@ -1127,6 +1195,12 @@ function getProviderLabel(service: string) {
                         : ""}
                     </p>
 
+                    <p className="mt-3">
+                      <strong>Service Timing:</strong>{" "}
+                      {request.request_type === "scheduled" && request.scheduled_for
+                        ? new Date(request.scheduled_for).toLocaleString()
+                        : "ASAP"}
+                    </p>
                     <p className="mt-3">
                       <strong>Status:</strong>{" "}
                       <span
@@ -1454,6 +1528,12 @@ function getProviderLabel(service: string) {
                         : ""}
                     </p>
 
+                    <p className="mt-3">
+                      <strong>Service Timing:</strong>{" "}
+                      {request.request_type === "scheduled" && request.scheduled_for
+                        ? new Date(request.scheduled_for).toLocaleString()
+                        : "ASAP"}
+                    </p>
                     <p className="mt-3">
                       <strong>Status:</strong>{" "}
                       <span

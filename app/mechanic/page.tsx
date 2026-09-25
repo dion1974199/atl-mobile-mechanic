@@ -12,6 +12,8 @@ type ServiceRequest = {
   service_address: string | null;
   service_city: string | null;
   service_zip: string | null;
+  request_type: string;
+  scheduled_for: string | null;
 };
 
 type ServiceMessage = {
@@ -223,7 +225,9 @@ export default function MechanicPage() {
         status,
         service_address,
         service_city,
-        service_zip
+        service_zip,
+        request_type,
+        scheduled_for
         `
       )
       .eq("provider_id", user.id)
@@ -581,6 +585,18 @@ export default function MechanicPage() {
                   </p>
 
                   <p className="mt-2">
+                    <strong>Service Timing:</strong>{" "}
+                    {request.request_type === "scheduled" && request.scheduled_for
+                      ? new Date(request.scheduled_for).toLocaleString()
+                      : "ASAP"}
+                  </p>
+                  <p className="mt-2">
+                    <strong>Service Timing:</strong>{" "}
+                    {request.request_type === "scheduled" && request.scheduled_for
+                      ? new Date(request.scheduled_for).toLocaleString()
+                      : "ASAP"}
+                  </p>
+                  <p className="mt-2">
                     <strong>Status:</strong>{" "}
                     {formatStatus(request.status)}
                   </p>
@@ -631,6 +647,12 @@ export default function MechanicPage() {
                       {formatLocation(request)}
                     </p>
 
+                    <p className="mt-2">
+                      <strong>Service Timing:</strong>{" "}
+                      {request.request_type === "scheduled" && request.scheduled_for
+                        ? new Date(request.scheduled_for).toLocaleString()
+                        : "ASAP"}
+                    </p>
                     <p className="mt-2">
                       <strong>Status:</strong>{" "}
                       {formatStatus(request.status)}
