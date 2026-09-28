@@ -1224,6 +1224,16 @@ function getProviderLabel(service: string) {
                         </p>
                       </div>
                     )}
+{request.status === "completed" && (
+  <a
+    href={process.env.NEXT_PUBLIC_GOOGLE_REVIEW_URL}
+    target="_blank"
+    rel="noopener noreferrer"
+    className="mt-4 block rounded bg-blue-600 px-4 py-3 text-center font-semibold text-white hover:bg-blue-700"
+  >
+    ⭐ Leave ATL Mobile Mechanic a Google Review
+  </a>
+)}
 
                     {repairAuthorizations[request.id] && (
                       <div className="mt-4 rounded border-2 border-amber-300 bg-amber-50 p-4 text-gray-900">
@@ -1557,6 +1567,17 @@ function getProviderLabel(service: string) {
                         </p>
                       </div>
                     )}
+
+{request.status === "completed" && (
+  <a
+    href={process.env.NEXT_PUBLIC_GOOGLE_REVIEW_URL}
+    target="_blank"
+    rel="noopener noreferrer"
+    className="mt-4 block rounded bg-blue-600 px-4 py-3 text-center font-semibold text-white hover:bg-blue-700"
+  >
+    ⭐ Leave ATL Mobile Mechanic a Google Review
+  </a>
+)}
                   </div>
                 ))}
             </div>
