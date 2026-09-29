@@ -16,6 +16,10 @@ type ServiceRequest = {
   scheduled_for: string | null;
 };
 
+type CustomerName = {
+  first_name: string;
+  last_name: string;
+};
 type ServiceMessage = {
   id: string;
   request_id: string;
@@ -44,14 +48,25 @@ export default function MechanicPage() {
   const stripeOnboardingContainerRef = useRef<HTMLDivElement | null>(null);
 
   const [openRequests, setOpenRequests] = useState<ServiceRequest[]>([]);
-  const [assignedRequests, setAssignedRequests] = useState<ServiceRequest[]>([]);
+  const [assignedRequests, setAssignedRequests] = useState<ServiceRequest[]>(
+    [],
+  );
+  const [customerNames, setCustomerNames] = useState<
+    Record<string, CustomerName>
+  >({});
   const [message, setMessage] = useState("");
-  const [stripeOnboardingComplete, setStripeOnboardingComplete] = useState<boolean | null>(null);
-  const [openConversationId, setOpenConversationId] = useState<string | null>(null);
+  const [stripeOnboardingComplete, setStripeOnboardingComplete] = useState<
+    boolean | null
+  >(null);
+  const [openConversationId, setOpenConversationId] = useState<string | null>(
+    null,
+  );
   const [messagesByRequest, setMessagesByRequest] = useState<
     Record<string, ServiceMessage[]>
   >({});
-  const [messageDrafts, setMessageDrafts] = useState<Record<string, string>>({});
+  const [messageDrafts, setMessageDrafts] = useState<Record<string, string>>(
+    {},
+  );
   const [sendingMessageId, setSendingMessageId] = useState<string | null>(null);
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
   const [currentUserId, setCurrentUserId] = useState<string>("");
@@ -66,7 +81,6 @@ export default function MechanicPage() {
   const [submittingAuthorizationId, setSubmittingAuthorizationId] = useState<
     string | null
   >(null);
-
 
   useEffect(() => {
     if (stripeOnboardingComplete !== false) {
@@ -125,7 +139,7 @@ export default function MechanicPage() {
         },
         async () => {
           await loadUnreadCounts();
-        }
+        },
       )
       .subscribe();
 
@@ -146,7 +160,7 @@ export default function MechanicPage() {
         },
         async () => {
           await loadRepairAuthorizations();
-        }
+        },
       )
       .subscribe();
 
@@ -190,27 +204,31 @@ export default function MechanicPage() {
       method: "POST",
     });
 
-    const { data: providerProfile, error: providerProfileError } = await supabase
-      .from("provider_profiles")
-      .select("stripe_onboarding_complete")
-      .eq("user_id", user.id)
-      .single();
+    const { data: providerProfile, error: providerProfileError } =
+      await supabase
+        .from("provider_profiles")
+        .select("stripe_onboarding_complete")
+        .eq("user_id", user.id)
+        .single();
 
     if (providerProfileError) {
       console.error("Provider Stripe status error:", providerProfileError);
       setStripeOnboardingComplete(false);
     } else {
       setStripeOnboardingComplete(
-        providerProfile?.stripe_onboarding_complete === true
+        providerProfile?.stripe_onboarding_complete === true,
       );
     }
 
     const { data: openData, error: openError } = await supabase.rpc(
-      "get_open_mechanic_jobs"
+      "get_open_mechanic_jobs",
     );
 
     if (openError) {
-      console.error("Open mechanic jobs error:", JSON.stringify(openError, null, 2));
+      console.error(
+        "Open mechanic jobs error:",
+        JSON.stringify(openError, null, 2),
+      );
     } else {
       setOpenRequests(openData || []);
     }
@@ -228,21 +246,46 @@ export default function MechanicPage() {
         service_zip,
         request_type,
         scheduled_for
-        `
+        `,
       )
       .eq("provider_id", user.id)
-      .in("status", [
-        "accepted",
-        "on_the_way",
-        "in_progress",
-        "completed",
-      ])
+      .in("status", ["accepted", "on_the_way", "in_progress", "completed"])
       .order("created_at", { ascending: false });
 
     if (assignedError) {
       console.error(assignedError);
     } else {
       setAssignedRequests(assignedData || []);
+      const customerEntries = await Promise.all(
+        (assignedData || []).map(async (request) => {
+          const { data: customerData, error: customerError } =
+            await supabase.rpc("get_provider_request_customer", {
+              request_id: request.id,
+            });
+
+          if (customerError || !customerData || customerData.length === 0) {
+            return null;
+          }
+
+          return [
+            request.id,
+            {
+              first_name: customerData[0].first_name,
+              last_name: customerData[0].last_name,
+            },
+          ] as const;
+        }),
+      );
+
+      const nextCustomerNames: Record<string, CustomerName> = {};
+
+      for (const entry of customerEntries) {
+        if (entry) {
+          nextCustomerNames[entry[0]] = entry[1];
+        }
+      }
+
+      setCustomerNames(nextCustomerNames);
     }
   }
 
@@ -262,19 +305,13 @@ export default function MechanicPage() {
     await loadJobs();
   }
 
-  async function updateJobStatus(
-    requestId: string,
-    newStatus: string
-  ) {
+  async function updateJobStatus(requestId: string, newStatus: string) {
     setMessage("");
 
-    const { error } = await supabase.rpc(
-      "update_mechanic_job_status",
-      {
-        request_id: requestId,
-        new_status: newStatus,
-      }
-    );
+    const { error } = await supabase.rpc("update_mechanic_job_status", {
+      request_id: requestId,
+      new_status: newStatus,
+    });
 
     if (error) {
       setMessage(error.message);
@@ -289,7 +326,7 @@ export default function MechanicPage() {
     const { data, error } = await supabase
       .from("repair_authorizations")
       .select(
-        "id, request_id, description, parts_amount, labor_amount, total_amount, status, customer_response_note, created_at, responded_at, authorization_type, parent_authorization_id"
+        "id, request_id, description, parts_amount, labor_amount, total_amount, status, customer_response_note, created_at, responded_at, authorization_type, parent_authorization_id",
       )
       .order("created_at", { ascending: false });
 
@@ -316,11 +353,18 @@ export default function MechanicPage() {
     const labor = Number(laborAmounts[requestId] || 0);
 
     if (!description) {
-      setMessage("Enter the work description before sending the authorization.");
+      setMessage(
+        "Enter the work description before sending the authorization.",
+      );
       return;
     }
 
-    if (!Number.isFinite(parts) || !Number.isFinite(labor) || parts < 0 || labor < 0) {
+    if (
+      !Number.isFinite(parts) ||
+      !Number.isFinite(labor) ||
+      parts < 0 ||
+      labor < 0
+    ) {
       setMessage("Parts and labor amounts must be valid non-negative numbers.");
       return;
     }
@@ -342,7 +386,10 @@ export default function MechanicPage() {
       return;
     }
 
-    setAuthorizationDescriptions((current) => ({ ...current, [requestId]: "" }));
+    setAuthorizationDescriptions((current) => ({
+      ...current,
+      [requestId]: "",
+    }));
     setPartsAmounts((current) => ({ ...current, [requestId]: "" }));
     setLaborAmounts((current) => ({ ...current, [requestId]: "" }));
     setMessage("Repair authorization sent to the customer.");
@@ -386,12 +433,9 @@ export default function MechanicPage() {
   }
 
   async function markMessagesRead(requestId: string) {
-    const { error } = await supabase.rpc(
-      "mark_service_messages_read",
-      {
-        request_id: requestId,
-      }
-    );
+    const { error } = await supabase.rpc("mark_service_messages_read", {
+      request_id: requestId,
+    });
 
     if (error) {
       console.error(error);
@@ -512,11 +556,11 @@ export default function MechanicPage() {
   }
 
   const activeJobs = assignedRequests.filter((request) =>
-    isActiveJob(request.status)
+    isActiveJob(request.status),
   );
 
   const jobHistory = assignedRequests.filter((request) =>
-    isHistoryJob(request.status)
+    isHistoryJob(request.status),
   );
 
   return (
@@ -548,7 +592,8 @@ export default function MechanicPage() {
           <section className="mt-6 rounded-lg border bg-white p-5 text-gray-900 shadow-sm">
             <h2 className="text-xl font-bold">Stripe Payout Setup</h2>
             <p className="mt-2 text-sm text-gray-600">
-              Complete Stripe onboarding so payouts can be enabled for your provider account.
+              Complete Stripe onboarding so payouts can be enabled for your
+              provider account.
             </p>
             <div ref={stripeOnboardingContainerRef} className="mt-4" />
           </section>
@@ -561,15 +606,20 @@ export default function MechanicPage() {
 
           <div className="mt-4 space-y-4">
             {openRequests.length === 0 ? (
-              <p className="text-gray-500">
-                No open requests found.
-              </p>
+              <p className="text-gray-500">No open requests found.</p>
             ) : (
               openRequests.map((request) => (
                 <div
                   key={request.id}
                   className="rounded-lg border bg-white p-5 text-gray-900 shadow-sm"
                 >
+                  {customerNames[request.id] && (
+                    <p className="mb-2">
+                      <strong>Customer:</strong>{" "}
+                      {customerNames[request.id].first_name}{" "}
+                      {customerNames[request.id].last_name}
+                    </p>
+                  )}
                   <p>
                     <strong>Service:</strong> {request.service}
                   </p>
@@ -580,19 +630,18 @@ export default function MechanicPage() {
                   </p>
 
                   <p className="mt-2">
-                    <strong>Location:</strong>{" "}
-                    {formatLocation(request)}
+                    <strong>Location:</strong> {formatLocation(request)}
                   </p>
 
                   <p className="mt-2">
                     <strong>Service Timing:</strong>{" "}
-                    {request.request_type === "scheduled" && request.scheduled_for
+                    {request.request_type === "scheduled" &&
+                    request.scheduled_for
                       ? new Date(request.scheduled_for).toLocaleString()
                       : "ASAP"}
                   </p>
                   <p className="mt-2">
-                    <strong>Status:</strong>{" "}
-                    {formatStatus(request.status)}
+                    <strong>Status:</strong> {formatStatus(request.status)}
                   </p>
 
                   <button
@@ -609,15 +658,11 @@ export default function MechanicPage() {
         </section>
 
         <section className="mt-10">
-          <h2 className="text-2xl font-bold text-gray-900">
-            🔧 Active Jobs
-          </h2>
+          <h2 className="text-2xl font-bold text-gray-900">🔧 Active Jobs</h2>
 
           <div className="mt-4 space-y-4">
             {activeJobs.length === 0 ? (
-              <p className="text-gray-500">
-                You do not have any active jobs.
-              </p>
+              <p className="text-gray-500">You do not have any active jobs.</p>
             ) : (
               activeJobs.map((request) => {
                 const nextStatus = getNextStatus(request.status);
@@ -637,69 +682,76 @@ export default function MechanicPage() {
                     </p>
 
                     <p className="mt-2">
-                      <strong>Location:</strong>{" "}
-                      {formatLocation(request)}
+                      <strong>Location:</strong> {formatLocation(request)}
                     </p>
 
                     <p className="mt-2">
                       <strong>Service Timing:</strong>{" "}
-                      {request.request_type === "scheduled" && request.scheduled_for
+                      {request.request_type === "scheduled" &&
+                      request.scheduled_for
                         ? new Date(request.scheduled_for).toLocaleString()
                         : "ASAP"}
                     </p>
                     <p className="mt-2">
-                      <strong>Status:</strong>{" "}
-                      {formatStatus(request.status)}
+                      <strong>Status:</strong> {formatStatus(request.status)}
                     </p>
 
                     <div className="mt-5 rounded border border-gray-300 bg-gray-50 p-4">
                       <h3 className="font-bold">
                         {(authorizationsByRequest[request.id] || []).some(
-                          (authorization) => authorization.status === "approved"
+                          (authorization) =>
+                            authorization.status === "approved",
                         )
                           ? "Change Order"
                           : "Repair Authorization"}
                       </h3>
 
-                      {(authorizationsByRequest[request.id] || []).length > 0 && (
+                      {(authorizationsByRequest[request.id] || []).length >
+                        0 && (
                         <div className="mt-3 space-y-3">
-                          {(authorizationsByRequest[request.id] || []).map((authorization) => (
-                            <div
-                              key={authorization.id}
-                              className="rounded border border-gray-200 bg-white p-3"
-                            >
-                              <p>
-                                <strong>Status:</strong>{" "}
-                                {authorization.status.charAt(0).toUpperCase() +
-                                  authorization.status.slice(1)}
-                              </p>
-                              <p className="mt-1">
-                                <strong>Work:</strong> {authorization.description}
-                              </p>
-                              <p className="mt-1">
-                                <strong>Parts:</strong>{" "}
-                                {formatMoney(authorization.parts_amount)}
-                              </p>
-                              <p className="mt-1">
-                                <strong>Labor:</strong>{" "}
-                                {formatMoney(authorization.labor_amount)}
-                              </p>
-                              <p className="mt-1 font-bold">
-                                Total: {formatMoney(authorization.total_amount)}
-                              </p>
-                              {authorization.customer_response_note && (
-                                <p className="mt-1">
-                                  <strong>Customer note:</strong>{" "}
-                                  {authorization.customer_response_note}
+                          {(authorizationsByRequest[request.id] || []).map(
+                            (authorization) => (
+                              <div
+                                key={authorization.id}
+                                className="rounded border border-gray-200 bg-white p-3"
+                              >
+                                <p>
+                                  <strong>Status:</strong>{" "}
+                                  {authorization.status
+                                    .charAt(0)
+                                    .toUpperCase() +
+                                    authorization.status.slice(1)}
                                 </p>
-                              )}
-                            </div>
-                          ))}
+                                <p className="mt-1">
+                                  <strong>Work:</strong>{" "}
+                                  {authorization.description}
+                                </p>
+                                <p className="mt-1">
+                                  <strong>Parts:</strong>{" "}
+                                  {formatMoney(authorization.parts_amount)}
+                                </p>
+                                <p className="mt-1">
+                                  <strong>Labor:</strong>{" "}
+                                  {formatMoney(authorization.labor_amount)}
+                                </p>
+                                <p className="mt-1 font-bold">
+                                  Total:{" "}
+                                  {formatMoney(authorization.total_amount)}
+                                </p>
+                                {authorization.customer_response_note && (
+                                  <p className="mt-1">
+                                    <strong>Customer note:</strong>{" "}
+                                    {authorization.customer_response_note}
+                                  </p>
+                                )}
+                              </div>
+                            ),
+                          )}
                         </div>
                       )}
 
                       {!(authorizationsByRequest[request.id] || []).some(
-                        (authorization) => authorization.status === "pending"
+                        (authorization) => authorization.status === "pending",
                       ) && (
                         <div className="mt-4">
                           <textarea
@@ -758,24 +810,28 @@ export default function MechanicPage() {
                             Proposed Total:{" "}
                             {formatMoney(
                               Number(partsAmounts[request.id] || 0) +
-                                Number(laborAmounts[request.id] || 0)
+                                Number(laborAmounts[request.id] || 0),
                             )}
                           </p>
 
                           <button
                             type="button"
                             disabled={submittingAuthorizationId === request.id}
-                            onClick={() => createRepairAuthorization(request.id)}
+                            onClick={() =>
+                              createRepairAuthorization(request.id)
+                            }
                             className="mt-3 rounded bg-emerald-700 px-4 py-2 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             {submittingAuthorizationId === request.id
                               ? "Sending..."
-                              : (authorizationsByRequest[request.id] || []).some(
-                                  (authorization) =>
-                                    authorization.status === "approved"
-                                )
-                              ? "Send Change Order"
-                              : "Send Repair Authorization"}
+                              : (
+                                    authorizationsByRequest[request.id] || []
+                                  ).some(
+                                    (authorization) =>
+                                      authorization.status === "approved",
+                                  )
+                                ? "Send Change Order"
+                                : "Send Repair Authorization"}
                           </button>
                         </div>
                       )}
@@ -804,29 +860,34 @@ export default function MechanicPage() {
                           <p className="font-bold">Service Messages</p>
 
                           <div className="mt-3 max-h-64 space-y-2 overflow-y-auto">
-                            {(messagesByRequest[request.id] || []).length === 0 ? (
+                            {(messagesByRequest[request.id] || []).length ===
+                            0 ? (
                               <p className="text-sm text-gray-600">
                                 No messages yet.
                               </p>
                             ) : (
-                              (messagesByRequest[request.id] || []).map((item) => (
-                                <div
-                                  key={item.id}
-                                  className="rounded bg-white p-3 shadow-sm"
-                                >
-                                  <p className="mb-1 text-sm font-bold text-gray-700">
-                                    {item.sender_id === currentUserId
-                                      ? "You"
-                                      : "Customer"}
-                                  </p>
-                                  <p className="whitespace-pre-wrap">
-                                    {item.message}
-                                  </p>
-                                  <p className="mt-1 text-xs text-gray-500">
-                                    {new Date(item.created_at).toLocaleString()}
-                                  </p>
-                                </div>
-                              ))
+                              (messagesByRequest[request.id] || []).map(
+                                (item) => (
+                                  <div
+                                    key={item.id}
+                                    className="rounded bg-white p-3 shadow-sm"
+                                  >
+                                    <p className="mb-1 text-sm font-bold text-gray-700">
+                                      {item.sender_id === currentUserId
+                                        ? "You"
+                                        : "Customer"}
+                                    </p>
+                                    <p className="whitespace-pre-wrap">
+                                      {item.message}
+                                    </p>
+                                    <p className="mt-1 text-xs text-gray-500">
+                                      {new Date(
+                                        item.created_at,
+                                      ).toLocaleString()}
+                                    </p>
+                                  </div>
+                                ),
+                              )
                             )}
                           </div>
 
@@ -865,9 +926,7 @@ export default function MechanicPage() {
                       <button
                         type="button"
                         className="mt-4 rounded bg-black px-4 py-2 font-semibold text-white"
-                        onClick={() =>
-                          updateJobStatus(request.id, nextStatus)
-                        }
+                        onClick={() => updateJobStatus(request.id, nextStatus)}
                       >
                         {getButtonText(request.status)}
                       </button>
@@ -880,9 +939,7 @@ export default function MechanicPage() {
         </section>
 
         <section className="mt-12">
-          <h2 className="text-2xl font-bold text-gray-900">
-            📚 Job History
-          </h2>
+          <h2 className="text-2xl font-bold text-gray-900">📚 Job History</h2>
 
           <div className="mt-4 space-y-4">
             {jobHistory.length === 0 ? (
@@ -905,13 +962,11 @@ export default function MechanicPage() {
                   </p>
 
                   <p className="mt-2">
-                    <strong>Location:</strong>{" "}
-                    {formatLocation(request)}
+                    <strong>Location:</strong> {formatLocation(request)}
                   </p>
 
                   <p className="mt-2">
-                    <strong>Status:</strong>{" "}
-                    {formatStatus(request.status)}
+                    <strong>Status:</strong> {formatStatus(request.status)}
                   </p>
                 </div>
               ))
