@@ -25,14 +25,22 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let event;
-
+  let event: Stripe.V2.Core.EventNotification | null = null;
+let standardEvent: Stripe.Event | null = null;
   try {
-    event = stripe.parseEventNotification(
-      body,
-      signature,
-      process.env.STRIPE_WEBHOOK_SECRET!
-    );
+    try {
+      event = stripe.parseEventNotification(
+        body,
+        signature,
+        process.env.STRIPE_WEBHOOK_SECRET!
+      );
+    } catch {
+      standardEvent = stripe.webhooks.constructEvent(
+        body,
+        signature,
+        process.env.STRIPE_WEBHOOK_SECRET!
+      );
+    }
   } catch (error) {
     console.error("Stripe webhook verification failed:", error);
 
@@ -41,11 +49,80 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
   }
+if (!standardEvent && !event) {
+  return NextResponse.json({ received: true });
+}
+  if (standardEvent?.type === "payment_intent.succeeded") {
+    const paymentIntent = standardEvent.data.object as Stripe.PaymentIntent;
+    const paymentId = paymentIntent.metadata.service_payment_id;
+    const providerStripeAccountId =
+      paymentIntent.metadata.provider_stripe_account_id;
+    const providerAmount = Number(paymentIntent.metadata.provider_amount);
 
-  console.log(`STRIPE_EVENT_TYPE=${event.type}`);
+    if (!paymentId || !providerStripeAccountId || providerAmount <= 0) {
+      throw new Error("Missing payment transfer metadata");
+    }
 
+    const admin = createAdminClient();
+
+    const { data: payment, error: paymentError } = await admin
+      .from("service_payments")
+      .select("id, stripe_transfer_id, transfer_status")
+      .eq("id", paymentId)
+      .single();
+
+    if (paymentError || !payment) {
+      throw paymentError ?? new Error("Service payment not found");
+    }
+
+    let transferId = payment.stripe_transfer_id;
+
+    if (!transferId) {
+      const transfer = await stripe.transfers.create(
+        {
+          amount: providerAmount,
+          currency: "usd",
+          destination: providerStripeAccountId,
+          transfer_group: paymentIntent.transfer_group ?? undefined,
+          metadata: {
+            service_payment_id: paymentId,
+            service_request_id:
+              paymentIntent.metadata.service_request_id ?? "",
+          },
+        },
+        {
+          idempotencyKey: `provider-transfer-${paymentId}`,
+        }
+      );
+
+      transferId = transfer.id;
+    }
+
+    const { error: updateError } = await admin
+      .from("service_payments")
+      .update({
+        payment_status: "paid",
+        stripe_charge_id:
+          typeof paymentIntent.latest_charge === "string"
+            ? paymentIntent.latest_charge
+            : paymentIntent.latest_charge?.id ?? null,
+        stripe_transfer_id: transferId,
+        transfer_status: "transferred",
+        paid_at: new Date().toISOString(),
+        provider_transferred_at: new Date().toISOString(),
+        payment_error: null,
+        transfer_error: null,
+      })
+      .eq("id", paymentId);
+
+    if (updateError) {
+      throw updateError;
+    }
+
+    return NextResponse.json({ received: true });
+  }
   try {
-    if (event.type === "v2.core.account.closed") {
+    if (event && event.type === "v2.core.account.closed")  {
       const admin = createAdminClient();
 
       const { error } = await admin
@@ -61,6 +138,10 @@ export async function POST(request: NextRequest) {
         throw error;
       }
 
+      return NextResponse.json({ received: true });
+    }
+
+    if (!event) {
       return NextResponse.json({ received: true });
     }
 

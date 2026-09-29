@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-
+import { Elements } from "@stripe/react-stripe-js";
+import { loadStripe } from "@stripe/stripe-js";
+import StripePaymentForm from "@/app/StripePaymentForm";
 type Vehicle = {
   id: string;
   year: number;
@@ -79,6 +81,8 @@ export default function RequestsPage() {
   >({});
   const [respondingAuthorizationId, setRespondingAuthorizationId] =
     useState<string | null>(null);
+const [paymentClientSecrets, setPaymentClientSecrets] = useState<Record<string, string>>({});
+const [paymentLoadingId, setPaymentLoadingId] = useState<string | null>(null);
 
   const [vehicleId, setVehicleId] = useState("");
   const [service, setService] = useState("");
@@ -461,20 +465,44 @@ export default function RequestsPage() {
     await loadUnreadCounts();
   }
 
-  async function createPayment(requestId: string) {
-  const { data, error } = await supabase.rpc(
-    "create_service_payment",
-    {
-      request_id_input: requestId,
+  
+async function createPayment(requestId: string) {
+  setPaymentLoadingId(requestId);
+
+  try {
+    const response = await fetch(
+      "/api/stripe/payments/create-intent",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ requestId }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      alert(data.error ?? "Unable to start payment");
+      return;
     }
-  );
 
-  if (error) {
-    alert(error.message);
-    return;
+    if (!data.clientSecret) {
+      alert("Stripe did not return a payment client secret.");
+      return;
+    }
+
+    setPaymentClientSecrets((current) => ({
+      ...current,
+      [requestId]: data.clientSecret,
+    }));
+  } catch (error) {
+    console.error("Unable to start Stripe payment:", error);
+    alert("Unable to start payment");
+  } finally {
+    setPaymentLoadingId(null);
   }
-
-  alert(`Payment record created successfully. Payment ID: ${data}`);
 }
   async function cancelRequest(requestId: string) {
     const confirmed = window.confirm(
@@ -1320,10 +1348,36 @@ function getProviderLabel(service: string) {
                           </div>
                         )}
 
-                        {repairAuthorizations[request.id].status === "approved" && (
-<button type="button" onClick={() => createPayment(request.id)} className="mt-4 rounded bg-black px-4 py-2 font-semibold text-white hover:bg-gray-800">Test Create Payment</button>
-)}
+                      
 
+
+{repairAuthorizations[request.id].status === "approved" && (
+  <div className="mt-4">
+    {!paymentClientSecrets[request.id] ? (
+      <button
+        type="button"
+        onClick={() => createPayment(request.id)}
+        disabled={paymentLoadingId === request.id}
+        className="rounded bg-black px-4 py-2 font-semibold text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {paymentLoadingId === request.id
+          ? "Preparing Payment..."
+          : "Pay for Service"}
+      </button>
+    ) : (
+      <Elements
+        stripe={loadStripe(
+          process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!
+        )}
+        options={{
+          clientSecret: paymentClientSecrets[request.id],
+        }}
+      >
+        <StripePaymentForm />
+      </Elements>
+    )}
+  </div>
+)}
 {repairAuthorizations[request.id].responded_at && (
                           <p className="mt-3 text-sm text-gray-600">
                             Responded:{" "}
