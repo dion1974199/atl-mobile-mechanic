@@ -90,7 +90,7 @@ ATL Mobile Mechanic
       </button>
 
       <button
-        onClick={() => handleAction("Service Requests selected")}
+        onClick={() => { window.location.href = "/requests"; }}
         className="rounded-2xl bg-white p-6 text-left shadow-sm transition hover:shadow-md"
       >
         <div className="text-4xl">📋</div>
