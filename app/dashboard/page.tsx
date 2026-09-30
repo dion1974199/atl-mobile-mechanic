@@ -1,6 +1,8 @@
 "use client";
 import { useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 export default function DashboardPage() {
+const supabase = createClient();
 const [message, setMessage] = useState("");
 const handleAction = (action: string) => {
 setMessage(action);
@@ -20,7 +22,7 @@ ATL Mobile Mechanic
       </div>
 
       <button
-        onClick={() => handleAction("Sign out selected")}
+        onClick={async () => { await supabase.auth.signOut(); window.location.href = "/auth/login"; }}
         className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium hover:bg-slate-50"
       >
         Sign Out
