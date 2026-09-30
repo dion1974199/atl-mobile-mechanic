@@ -60,7 +60,7 @@ ATL Mobile Mechanic
     <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-4">
 
       <button
-        onClick={() => handleAction("Request a Mechanic selected")}
+        onClick={() => { window.location.href = "/requests"; }}
         className="rounded-2xl bg-white p-6 text-left shadow-sm transition hover:shadow-md"
       >
         <div className="text-4xl">🔧</div>
