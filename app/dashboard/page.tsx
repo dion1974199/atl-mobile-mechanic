@@ -1,12 +1,7 @@
 "use client";
-import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 export default function DashboardPage() {
 const supabase = createClient();
-const [message, setMessage] = useState("");
-const handleAction = (action: string) => {
-setMessage(action);
-};
 return (
 <main className="min-h-screen bg-slate-50">
 {/* Header */}
@@ -122,18 +117,6 @@ ATL Mobile Mechanic
       </button>
     </div>
 
-    {/* Temporary Action Message */}
-    {message && (
-      <div className="mt-8 rounded-xl border border-blue-200 bg-blue-50 p-5">
-        <p className="font-semibold text-blue-900">
-          {message}
-        </p>
-
-        <p className="mt-1 text-sm text-blue-700">
-          We'll connect this button to its real feature next.
-        </p>
-      </div>
-    )}
   </section>
 </main>
 );
