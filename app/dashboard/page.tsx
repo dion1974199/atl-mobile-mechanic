@@ -44,7 +44,7 @@ ATL Mobile Mechanic
 
     {/* Emergency Button */}
     <button
-      onClick={() => handleAction("Emergency roadside assistance selected")}
+      onClick={() => { window.location.href = "/requests"; }}
       className="mb-8 w-full rounded-2xl bg-red-600 p-6 text-left text-white shadow-lg transition hover:bg-red-700"
     >
       <div className="text-4xl">🚨</div>
