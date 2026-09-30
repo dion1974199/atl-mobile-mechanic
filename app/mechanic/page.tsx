@@ -672,6 +672,13 @@ export default function MechanicPage() {
                     key={request.id}
                     className="rounded-lg border bg-white p-5 text-gray-900 shadow-sm"
                   >
+                    {customerNames[request.id] && (
+                      <p className="mb-2">
+                        <strong>Customer:</strong>{" "}
+                        {customerNames[request.id].first_name}{" "}
+                        {customerNames[request.id].last_name}
+                      </p>
+                    )}
                     <p>
                       <strong>Service:</strong> {request.service}
                     </p>
