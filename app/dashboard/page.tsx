@@ -75,7 +75,7 @@ ATL Mobile Mechanic
       </button>
 
       <button
-        onClick={() => handleAction("My Vehicles selected")}
+        onClick={() => { window.location.href = "/vehicles"; }}
         className="rounded-2xl bg-white p-6 text-left shadow-sm transition hover:shadow-md"
       >
         <div className="text-4xl">🚙</div>
