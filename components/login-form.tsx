@@ -54,7 +54,7 @@ export function LoginForm() {
       return;
     }
 
-    window.location.href = "/protected";
+    window.location.href = "/requests";
   }
 
   return (
