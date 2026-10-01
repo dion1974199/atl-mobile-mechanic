@@ -88,9 +88,12 @@ export default function HomePage() {
               including highway and interstate service.
             </p>
 
-            <p className="mt-5 text-sm font-semibold text-slate-500">
-              Tire Technician service coming next
-            </p>
+            <Link
+              href="/tire-technician"
+              className="mt-5 inline-block font-semibold text-blue-600"
+            >
+              Tire Technician Dashboard →
+            </Link>
           </div>
         </div>
       </section>
