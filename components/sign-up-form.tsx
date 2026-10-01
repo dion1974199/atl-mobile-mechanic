@@ -41,9 +41,6 @@ export function SignUpForm() {
       },
     });
 
-    console.log("SIGNUP DATA:", data);
-    console.log("SIGNUP ERROR:", signUpError);
-
     if (signUpError) {
       setError(signUpError.message);
       return;
