@@ -83,6 +83,7 @@ export default function RequestsPage() {
     useState<string | null>(null);
 const [paymentClientSecrets, setPaymentClientSecrets] = useState<Record<string, string>>({});
 const [paymentLoadingId, setPaymentLoadingId] = useState<string | null>(null);
+const [paymentStatuses, setPaymentStatuses] = useState<Record<string, string>>({});
 
   const [vehicleId, setVehicleId] = useState("");
   const [service, setService] = useState("");
@@ -211,6 +212,8 @@ const [paymentLoadingId, setPaymentLoadingId] = useState<string | null>(null);
       loadRequests(user.id),
       loadUnreadCounts(),
       loadRepairAuthorizations(),
+      loadPaymentStatuses(),
+
     ]);
   }
 
@@ -326,7 +329,26 @@ const [paymentLoadingId, setPaymentLoadingId] = useState<string | null>(null);
     setRepairAuthorizations(latestByRequest);
   }
 
-  async function respondToRepairAuthorization(
+  async function loadPaymentStatuses() {
+    const { data, error } = await supabase.rpc(
+      "get_customer_payment_statuses"
+    );
+
+    if (error) {
+      console.error(error);
+      return;
+    }
+
+    const nextStatuses: Record<string, string> = {};
+
+    for (const item of data || []) {
+      nextStatuses[item.request_id] = item.payment_status;
+    }
+
+    setPaymentStatuses(nextStatuses);
+  }
+ 
+ async function respondToRepairAuthorization(
     authorizationId: string,
     newStatus: "approved" | "declined"
   ) {
@@ -1353,7 +1375,9 @@ function getProviderLabel(service: string) {
 
 {repairAuthorizations[request.id].status === "approved" && (
   <div className="mt-4">
-    {!paymentClientSecrets[request.id] ? (
+    {paymentStatuses[request.id] === "paid" ? (
+      <p className="font-semibold text-green-700">Payment complete</p>
+    ) : !paymentClientSecrets[request.id] ? (
       <button
         type="button"
         onClick={() => createPayment(request.id)}

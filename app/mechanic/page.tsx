@@ -97,6 +97,18 @@ export default function MechanicPage() {
     const stripeConnectInstance = loadConnectAndInitialize({
       publishableKey,
       fetchClientSecret: async () => {
+        const createResponse = await fetch("/api/stripe/connect/create-account", {
+          method: "POST",
+        });
+
+        const createData = await createResponse.json();
+
+        if (!createResponse.ok) {
+          throw new Error(
+            createData.error || "Unable to create Stripe connected account"
+          );
+        }
+
         const response = await fetch("/api/stripe/connect/account-session", {
           method: "POST",
         });
