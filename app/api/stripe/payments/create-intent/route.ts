@@ -131,6 +131,13 @@ export async function POST(request: Request) {
       );
     }
 
+    if (payment?.payment_status === "paid") {
+      return NextResponse.json(
+        { error: "This service request has already been paid" },
+        { status: 409 }
+      );
+    }
+
     const stripe = new Stripe(stripeSecretKey);
 
     if (payment?.stripe_payment_intent_id) {
