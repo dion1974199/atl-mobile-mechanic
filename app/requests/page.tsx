@@ -570,8 +570,8 @@ async function createPayment(requestId: string) {
       return;
     }
 
-    if (!serviceZip.trim()) {
-      alert("Please enter the ZIP code.");
+    if (serviceZip.trim().match(/^[0-9]{5}$/) === null) {
+      alert("Please enter a valid 5-digit ZIP code.");
       return;
     }
 
