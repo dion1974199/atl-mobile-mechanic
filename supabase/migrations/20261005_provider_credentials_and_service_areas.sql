@@ -459,23 +459,23 @@ end;
 $function$;
 
 -- Provider RPC permissions: authenticated users only.
-REVOKE ALL ON FUNCTION public.get_my_provider_profile() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.get_my_provider_profile() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.get_my_provider_profile() TO authenticated;
 
-REVOKE ALL ON FUNCTION public.update_provider_profile(text, integer, text, text, text, date, text[], text, text, text, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.update_provider_profile(text, integer, text, text, text, date, text[], text, text, text, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.update_provider_profile(text, integer, text, text, text, date, text[], text, text, text, text) TO authenticated;
 
-REVOKE ALL ON FUNCTION public.create_provider_profile(text, integer, text, text, text, date, text, text[], text, text, text, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.create_provider_profile(text, integer, text, text, text, date, text, text[], text, text, text, text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.create_provider_profile(text, integer, text, text, text, date, text, text[], text, text, text, text) TO authenticated;
 
-REVOKE ALL ON FUNCTION public.get_open_mechanic_jobs() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.get_open_mechanic_jobs() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.get_open_mechanic_jobs() TO authenticated;
 
-REVOKE ALL ON FUNCTION public.get_open_tire_jobs() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.get_open_tire_jobs() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.get_open_tire_jobs() TO authenticated;
 
-REVOKE ALL ON FUNCTION public.accept_mechanic_job(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.accept_mechanic_job(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.accept_mechanic_job(uuid) TO authenticated;
 
-REVOKE ALL ON FUNCTION public.accept_tire_job(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.accept_tire_job(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.accept_tire_job(uuid) TO authenticated;
