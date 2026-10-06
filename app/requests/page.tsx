@@ -627,7 +627,7 @@ async function createPayment(requestId: string) {
         problem_description: problem || null,
         service_address: serviceAddress || null,
         service_city: serviceCity,
-        service_zip: serviceZip,
+        service_zip: serviceZip.trim(),
         request_type: requestType,
         scheduled_for: requestType === "scheduled" ? new Date(scheduledFor).toISOString() : null,
         vehicle_type:
