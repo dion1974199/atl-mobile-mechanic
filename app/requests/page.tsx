@@ -188,7 +188,18 @@ const [paymentStatuses, setPaymentStatuses] = useState<Record<string, string>>({
       return;
     }
 
-    const role = user.user_metadata?.role;
+    const { data: profile, error: roleError } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+
+    if (roleError || !profile) {
+      console.error("Unable to verify account role:", roleError);
+      return;
+    }
+
+    const role = profile.role;
 
     if (role === "mechanic") {
       window.location.href = "/mechanic";
