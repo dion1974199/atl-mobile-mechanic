@@ -185,7 +185,18 @@ export default function TireTechnicianPage() {
 
     setCurrentUserId(user.id);
 
-    const role = user.user_metadata?.role;
+    const { data: profile, error: roleError } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+
+    if (roleError || !profile) {
+      setMessage("Unable to verify your account role.");
+      return;
+    }
+
+    const role = profile.role;
 
     if (role === "customer") {
       window.location.href = "/requests";
