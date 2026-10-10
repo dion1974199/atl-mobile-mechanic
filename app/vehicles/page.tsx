@@ -96,7 +96,18 @@ async function loadModels(selectedYear: string, selectedMake: string) {
       return;
     }
 
-    const role = user.user_metadata?.role;
+    const { data: profile, error: roleError } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+
+    if (roleError || !profile) {
+      setMessage("Unable to verify your account role.");
+      return;
+    }
+
+    const role = profile.role;
 
     if (role === "mechanic") {
       window.location.href = "/mechanic";
@@ -147,7 +158,13 @@ async function loadModels(selectedYear: string, selectedMake: string) {
       return;
     }
 
-    if (user.user_metadata?.role !== "customer") {
+    const { data: profile, error: roleError } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+
+    if (roleError || profile?.role !== "customer") {
       setMessage("Only customers can add vehicles.");
       return;
     }
