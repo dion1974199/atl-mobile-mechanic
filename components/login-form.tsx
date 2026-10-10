@@ -37,7 +37,19 @@ export function LoginForm() {
       return;
     }
 
-    const role = data.user.user_metadata?.role;
+    const { data: profile, error: roleError } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", data.user.id)
+      .single();
+
+    if (roleError || !profile) {
+      setErrorMessage("Unable to verify your account role.");
+      setLoading(false);
+      return;
+    }
+
+    const role = profile.role;
 
     if (role === "customer") {
       window.location.href = "/requests";
