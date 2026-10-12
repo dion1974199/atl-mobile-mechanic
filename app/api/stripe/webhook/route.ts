@@ -53,6 +53,7 @@ if (!standardEvent && !event) {
   return NextResponse.json({ received: true });
 }
   if (standardEvent?.type === "payment_intent.succeeded") {
+    try {
     const paymentIntent = standardEvent.data.object as Stripe.PaymentIntent;
     const paymentId = paymentIntent.metadata.service_payment_id;
     const providerStripeAccountId =
@@ -67,12 +68,67 @@ if (!standardEvent && !event) {
 
     const { data: payment, error: paymentError } = await admin
       .from("service_payments")
-      .select("id, stripe_transfer_id, transfer_status")
+      .select("id, request_id, provider_id, stripe_payment_intent_id, authorized_amount, provider_amount, currency, stripe_transfer_id, transfer_status")
       .eq("id", paymentId)
       .single();
 
     if (paymentError || !payment) {
       throw paymentError ?? new Error("Service payment not found");
+    }
+
+    if (payment.stripe_payment_intent_id !== paymentIntent.id) {
+      throw new Error("PaymentIntent does not match the service payment");
+    }
+
+    const expectedTotal = Math.round(Number(payment.authorized_amount) * 100);
+    const expectedProviderAmount = Math.round(Number(payment.provider_amount) * 100);
+
+    if (
+      !Number.isSafeInteger(expectedTotal) ||
+      !Number.isSafeInteger(expectedProviderAmount) ||
+      expectedTotal <= 0 ||
+      expectedProviderAmount <= 0 ||
+      payment.currency !== "usd" ||
+      paymentIntent.currency !== payment.currency ||
+      paymentIntent.amount_received !== expectedTotal ||
+      providerAmount !== expectedProviderAmount
+    ) {
+      throw new Error("Stripe payment amount or currency does not match the service payment");
+    }
+
+    const { data: provider, error: providerError } = await admin
+      .from("provider_profiles")
+      .select("stripe_account_id")
+      .eq("user_id", payment.provider_id)
+      .single();
+
+    if (providerError || !provider) {
+      throw providerError ?? new Error("Payment provider profile not found");
+    }
+
+    if (
+      !provider.stripe_account_id ||
+      provider.stripe_account_id !== providerStripeAccountId
+    ) {
+      throw new Error("Provider Stripe account does not match the service payment");
+    }
+
+    const { data: serviceRequest, error: requestError } = await admin
+      .from("service_requests")
+      .select("status, customer_confirmed_at")
+      .eq("id", payment.request_id)
+      .single();
+
+    if (
+      requestError ||
+      !serviceRequest ||
+      serviceRequest.status !== "completed" ||
+      !serviceRequest.customer_confirmed_at ||
+      paymentIntent.metadata.service_request_id !== payment.request_id
+    ) {
+      throw new Error(
+        "Job completion and customer satisfaction confirmation are required before transfer"
+      );
     }
 
     let transferId = payment.stripe_transfer_id;
@@ -120,6 +176,13 @@ if (!standardEvent && !event) {
     }
 
     return NextResponse.json({ received: true });
+    } catch (error) {
+      console.error("Stripe payment webhook processing failed:", error);
+      return NextResponse.json(
+        { error: "Stripe payment webhook processing failed" },
+        { status: 500 }
+      );
+    }
   }
   try {
     if (event && event.type === "v2.core.account.closed")  {

@@ -18,6 +18,7 @@ type ServiceRequest = {
   service: string;
   problem_description: string | null;
   status: string;
+  customer_confirmed_at: string | null;
   created_at: string;
   service_address: string | null;
   service_city: string | null;
@@ -253,6 +254,7 @@ const [paymentStatuses, setPaymentStatuses] = useState<Record<string, string>>({
         service,
         problem_description,
         status,
+        customer_confirmed_at,
         created_at,
         service_address,
         service_city,
@@ -499,6 +501,26 @@ const [paymentStatuses, setPaymentStatuses] = useState<Record<string, string>>({
   }
 
   
+async function confirmService(requestId: string) {
+  const confirmed = window.confirm(
+    "Are you satisfied with the completed service and ready to proceed to payment?"
+  );
+
+  if (!confirmed) return;
+
+  const { error } = await supabase.rpc("confirm_customer_service", {
+    request_id: requestId,
+  });
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  await loadRequests(currentUserId);
+  alert("Service confirmed. You can now proceed to payment.");
+}
+
 async function createPayment(requestId: string) {
   setPaymentLoadingId(requestId);
 
@@ -1388,6 +1410,19 @@ function getProviderLabel(service: string) {
   <div className="mt-4">
     {paymentStatuses[request.id] === "paid" ? (
       <p className="font-semibold text-green-700">Payment complete</p>
+    ) : request.status !== "completed" ? (
+      <p className="text-sm text-gray-600">
+        Payment will be available after the mechanic completes the job
+        and you confirm satisfaction.
+      </p>
+    ) : !request.customer_confirmed_at ? (
+      <button
+        type="button"
+        onClick={() => confirmService(request.id)}
+        className="rounded bg-green-700 px-4 py-2 font-semibold text-white hover:bg-green-800"
+      >
+        Confirm Service Completed & Satisfactory
+      </button>
     ) : !paymentClientSecrets[request.id] ? (
       <button
         type="button"

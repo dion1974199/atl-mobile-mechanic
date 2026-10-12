@@ -43,7 +43,7 @@ export async function POST(request: Request) {
     const { data: serviceRequest, error: serviceRequestError } =
       await admin
         .from("service_requests")
-        .select("id, customer_id, provider_id, status")
+        .select("id, customer_id, provider_id, status, customer_confirmed_at")
         .eq("id", requestId)
         .single();
 
@@ -57,6 +57,19 @@ export async function POST(request: Request) {
     if (serviceRequest.customer_id !== user.id) {
       return NextResponse.json(
         { error: "Only the customer can pay for this service request" },
+        { status: 403 }
+      );
+    }
+
+    if (
+      serviceRequest.status !== "completed" ||
+      !serviceRequest.customer_confirmed_at
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "The mechanic must complete the job and the customer must confirm satisfaction before payment.",
+        },
         { status: 403 }
       );
     }
@@ -193,7 +206,7 @@ export async function POST(request: Request) {
         },
       },
       {
-        idempotencyKey: `service-payment-${paymentId}`,
+        idempotencyKey: `service-payment-${paymentId}-${amountInCents}-v2`,
       }
     );
 
