@@ -251,6 +251,7 @@ export default function TireTechnicianPage() {
         "accepted",
         "on_the_way",
         "in_progress",
+        "work_completed",
         "completed",
       ])
       .order("created_at", { ascending: false });
@@ -517,6 +518,7 @@ export default function TireTechnicianPage() {
     if (status === "accepted") return "Accepted";
     if (status === "on_the_way") return "On the Way";
     if (status === "in_progress") return "In Progress";
+    if (status === "work_completed") return "Work Finished — Awaiting Payment";
     if (status === "completed") return "Completed";
 
     return status;
@@ -525,7 +527,7 @@ export default function TireTechnicianPage() {
   function getNextStatus(status: string) {
     if (status === "accepted") return "on_the_way";
     if (status === "on_the_way") return "in_progress";
-    if (status === "in_progress") return "completed";
+    if (status === "in_progress") return "work_completed";
 
     return null;
   }
@@ -533,14 +535,14 @@ export default function TireTechnicianPage() {
   function getButtonText(status: string) {
     if (status === "accepted") return "Mark On the Way";
     if (status === "on_the_way") return "Start Job — Approval Required";
-    if (status === "in_progress") return "Mark Completed";
+    if (status === "in_progress") return "Mark Work Finished";
 
     return "";
   }
 
 
   function isActiveJob(status: string) {
-    return ["accepted", "on_the_way", "in_progress"].includes(status);
+    return ["accepted", "on_the_way", "in_progress", "work_completed"].includes(status);
   }
 
   function isHistoryJob(status: string) {

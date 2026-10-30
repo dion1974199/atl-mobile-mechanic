@@ -1410,9 +1410,9 @@ function getProviderLabel(service: string) {
   <div className="mt-4">
     {paymentStatuses[request.id] === "paid" ? (
       <p className="font-semibold text-green-700">Payment complete</p>
-    ) : request.status !== "completed" ? (
+    ) : request.status !== "work_completed" && request.status !== "completed" ? (
       <p className="text-sm text-gray-600">
-        Payment will be available after the mechanic completes the job
+        Payment will be available after the provider finishes the work
         and you confirm satisfaction.
       </p>
     ) : !request.customer_confirmed_at ? (
@@ -1459,7 +1459,7 @@ function getProviderLabel(service: string) {
                       </div>
                     )}
 
-                    {["accepted", "on_the_way", "in_progress"].includes(
+                    {["accepted", "on_the_way", "in_progress", "work_completed"].includes(
                       request.status
                     ) && providerNames[request.id] && (
                       <div className="mt-4">

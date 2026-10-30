@@ -62,13 +62,13 @@ export async function POST(request: Request) {
     }
 
     if (
-      serviceRequest.status !== "completed" ||
+      serviceRequest.status !== "work_completed" ||
       !serviceRequest.customer_confirmed_at
     ) {
       return NextResponse.json(
         {
           error:
-            "The mechanic must complete the job and the customer must confirm satisfaction before payment.",
+            "The provider must finish the work and the customer must confirm satisfaction before payment.",
         },
         { status: 403 }
       );
@@ -111,6 +111,18 @@ export async function POST(request: Request) {
     }
 
     const amountInCents = Math.round(approvedTotal * 100);
+
+    if (
+      !Number.isSafeInteger(amountInCents) ||
+      amountInCents < 50 ||
+      amountInCents > 99999999
+    ) {
+      return NextResponse.json(
+        { error: "Approved repair total is outside the supported payment range" },
+        { status: 400 }
+      );
+    }
+
     const marketplaceFeeAmount = Math.round(amountInCents * 0.15);
     const providerAmount = amountInCents - marketplaceFeeAmount;
 
@@ -133,7 +145,7 @@ export async function POST(request: Request) {
 
     const { data: payment, error: paymentError } = await admin
       .from("service_payments")
-      .select("id, stripe_payment_intent_id, payment_status")
+      .select("id, stripe_payment_intent_id, payment_status, transfer_status, stripe_transfer_id, single_transfer_attempted_at, split_transfer_attempted_at")
       .eq("request_id", requestId)
       .maybeSingle();
 
@@ -144,11 +156,49 @@ export async function POST(request: Request) {
       );
     }
 
+    if (
+      payment &&
+      (
+        payment.payment_status !== "pending" ||
+        payment.transfer_status !== "not_transferred" ||
+        payment.stripe_transfer_id != null ||
+        payment.single_transfer_attempted_at != null ||
+        payment.split_transfer_attempted_at != null
+      )
+    ) {
+      return NextResponse.json(
+        { error: "Payment is not eligible for checkout; settlement or review may be required" },
+        { status: 409 }
+      );
+    }
+
     if (payment?.payment_status === "paid") {
       return NextResponse.json(
         { error: "This service request has already been paid" },
         { status: 409 }
       );
+    }
+
+    if (payment) {
+      const { data: splitParts, error: splitPartsError } = await admin
+        .from("service_payment_parts")
+        .select("id")
+        .eq("service_payment_id", payment.id)
+        .limit(1);
+
+      if (splitPartsError) {
+        return NextResponse.json(
+          { error: "Unable to verify payment mode" },
+          { status: 500 }
+        );
+      }
+
+      if (splitParts && splitParts.length > 0) {
+        return NextResponse.json(
+          { error: "Two-card checkout has already been initialized for this job" },
+          { status: 409 }
+        );
+      }
     }
 
     const stripe = new Stripe(stripeSecretKey);
@@ -157,6 +207,21 @@ export async function POST(request: Request) {
       const existingIntent = await stripe.paymentIntents.retrieve(
         payment.stripe_payment_intent_id
       );
+
+      if (
+        !["requires_payment_method", "requires_confirmation"].includes(existingIntent.status) ||
+        existingIntent.amount !== amountInCents ||
+        existingIntent.currency !== "usd" ||
+        existingIntent.metadata.service_payment_id !== payment.id ||
+        existingIntent.metadata.service_request_id !== requestId ||
+        existingIntent.transfer_group !== `service_request_${requestId}` ||
+        !existingIntent.client_secret
+      ) {
+        return NextResponse.json(
+          { error: "Existing Stripe payment requires review; checkout cannot resume" },
+          { status: 409 }
+        );
+      }
 
       return NextResponse.json({
         clientSecret: existingIntent.client_secret,
@@ -210,19 +275,36 @@ export async function POST(request: Request) {
       }
     );
 
-    const { error: updateError } = await admin
+    const { data: updatedPayment, error: updateError } = await admin
       .from("service_payments")
       .update({
         stripe_payment_intent_id: paymentIntent.id,
         stripe_transfer_group: transferGroup,
         payment_status: "pending",
       })
-      .eq("id", paymentId);
+      .eq("id", paymentId)
+      .eq("payment_status", "pending")
+      .eq("transfer_status", "not_transferred")
+      .is("stripe_transfer_id", null)
+      .is("single_transfer_attempted_at", null)
+      .is("split_transfer_attempted_at", null)
+      .is("stripe_payment_intent_id", null)
+      .select("id")
+      .maybeSingle();
 
     if (updateError) {
       return NextResponse.json(
         { error: "Payment created but database update failed" },
         { status: 500 }
+      );
+    }
+
+    if (!updatedPayment) {
+      return NextResponse.json(
+        {
+          error: "Payment checkout state changed; payment requires reconciliation",
+        },
+        { status: 409 }
       );
     }
 

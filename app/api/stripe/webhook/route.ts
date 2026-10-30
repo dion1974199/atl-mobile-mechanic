@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { handleSplitPaymentSucceeded } from "@/lib/stripe/handle-split-payment";
+import { handleSplitPaymentFailure } from "@/lib/stripe/handle-split-payment-failure";
+import { handlePaymentRiskEvent } from "@/lib/stripe/handle-payment-risk-event";
+import { verifySinglePayment } from "@/lib/stripe/verify-single-payment";
+import { createSingleTransfer } from "@/lib/stripe/create-single-transfer";
+import { reconcileSingleTransfer } from "@/lib/stripe/reconcile-single-transfer";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 
@@ -52,9 +58,48 @@ let standardEvent: Stripe.Event | null = null;
 if (!standardEvent && !event) {
   return NextResponse.json({ received: true });
 }
+  if (
+    standardEvent?.type === "charge.dispute.created" ||
+    standardEvent?.type === "charge.dispute.updated" ||
+    standardEvent?.type === "charge.dispute.closed" ||
+    standardEvent?.type === "refund.created" ||
+    standardEvent?.type === "refund.updated" ||
+    standardEvent?.type === "refund.failed"
+  ) {
+    try {
+      await handlePaymentRiskEvent(standardEvent);
+      return NextResponse.json({ received: true });
+    } catch (error) {
+      console.error("Stripe payment risk processing failed:", error);
+      return NextResponse.json({ error: "Payment risk processing failed" }, { status: 500 });
+    }
+  }
+
+  if (
+    standardEvent?.type === "payment_intent.payment_failed" ||
+    standardEvent?.type === "payment_intent.canceled"
+  ) {
+    try {
+      const paymentIntent = standardEvent.data.object as Stripe.PaymentIntent;
+      await handleSplitPaymentFailure(paymentIntent);
+      return NextResponse.json({ received: true });
+    } catch (error) {
+      console.error("Split-payment failure webhook processing failed:", error);
+      return NextResponse.json(
+        { error: "Split-payment failure processing failed" },
+        { status: 500 }
+      );
+    }
+  }
+
   if (standardEvent?.type === "payment_intent.succeeded") {
     try {
     const paymentIntent = standardEvent.data.object as Stripe.PaymentIntent;
+
+    if (await handleSplitPaymentSucceeded(paymentIntent)) {
+      return NextResponse.json({ received: true });
+    }
+
     const paymentId = paymentIntent.metadata.service_payment_id;
     const providerStripeAccountId =
       paymentIntent.metadata.provider_stripe_account_id;
@@ -68,7 +113,7 @@ if (!standardEvent && !event) {
 
     const { data: payment, error: paymentError } = await admin
       .from("service_payments")
-      .select("id, request_id, provider_id, stripe_payment_intent_id, authorized_amount, provider_amount, currency, stripe_transfer_id, transfer_status")
+      .select("id, request_id, provider_id, stripe_payment_intent_id, authorized_amount, provider_amount, currency, payment_status, stripe_transfer_id, stripe_charge_id, stripe_transfer_group, transfer_status, single_transfer_attempted_at, split_transfer_attempted_at")
       .eq("id", paymentId)
       .single();
 
@@ -78,6 +123,20 @@ if (!standardEvent && !event) {
 
     if (payment.stripe_payment_intent_id !== paymentIntent.id) {
       throw new Error("PaymentIntent does not match the service payment");
+    }
+
+    if (
+      !(
+        (payment.payment_status === "pending" &&
+          ["not_transferred", "processing"].includes(payment.transfer_status)) ||
+        (payment.payment_status === "paid" &&
+          payment.transfer_status === "transferred")
+      ) ||
+      payment.split_transfer_attempted_at != null
+    ) {
+      throw new Error(
+        "Single-card payment is not eligible for transfer or reconciliation"
+      );
     }
 
     const expectedTotal = Math.round(Number(payment.authorized_amount) * 100);
@@ -131,48 +190,54 @@ if (!standardEvent && !event) {
       );
     }
 
-    let transferId = payment.stripe_transfer_id;
+    const transferGroup = `service_request_${payment.request_id}`;
 
-    if (!transferId) {
-      const transfer = await stripe.transfers.create(
-        {
-          amount: providerAmount,
-          currency: "usd",
-          destination: providerStripeAccountId,
-          transfer_group: paymentIntent.transfer_group ?? undefined,
-          metadata: {
-            service_payment_id: paymentId,
-            service_request_id:
-              paymentIntent.metadata.service_request_id ?? "",
-          },
-        },
-        {
-          idempotencyKey: `provider-transfer-${paymentId}`,
-        }
-      );
-
-      transferId = transfer.id;
+    if (payment.stripe_transfer_group !== transferGroup) {
+      throw new Error("Single-card transfer group does not match");
     }
 
-    const { error: updateError } = await admin
-      .from("service_payments")
-      .update({
-        payment_status: "paid",
-        stripe_charge_id:
-          typeof paymentIntent.latest_charge === "string"
-            ? paymentIntent.latest_charge
-            : paymentIntent.latest_charge?.id ?? null,
-        stripe_transfer_id: transferId,
-        transfer_status: "transferred",
-        paid_at: new Date().toISOString(),
-        provider_transferred_at: new Date().toISOString(),
-        payment_error: null,
-        transfer_error: null,
-      })
-      .eq("id", paymentId);
+    const verifiedChargeId = await verifySinglePayment(
+      stripe,
+      paymentIntent.id,
+      paymentId,
+      payment.request_id,
+      expectedTotal,
+      transferGroup
+    );
 
-    if (updateError) {
-      throw updateError;
+    const { data: newlyClaimed, error: claimError } = await admin.rpc(
+      "claim_single_payment_transfer",
+      { p_payment_id: paymentId }
+    );
+
+    if (claimError) {
+      throw new Error(`Unable to claim single-card transfer: ${claimError.message}`);
+    }
+
+    if (newlyClaimed === true) {
+      await createSingleTransfer(
+        stripe,
+        paymentId,
+        payment.request_id,
+        providerStripeAccountId,
+        expectedProviderAmount,
+        transferGroup,
+        true
+      );
+    }
+
+    const reconciled = await reconcileSingleTransfer(
+      stripe,
+      paymentId,
+      payment.request_id,
+      providerStripeAccountId,
+      expectedProviderAmount,
+      transferGroup,
+      verifiedChargeId
+    );
+
+    if (!reconciled) {
+      throw new Error("Single-card transfer is awaiting reconciliation");
     }
 
     return NextResponse.json({ received: true });
