@@ -32,7 +32,7 @@ export async function reconcileSingleTransfer(
     if (
       !payment.stripe_transfer_id ||
       payment.stripe_charge_id !== chargeId ||
-      payment.payment_status !== "paid"
+      !["paid", "partially_refunded", "refunded"].includes(payment.payment_status)
     ) {
       throw new Error("Recorded single-card settlement is inconsistent");
     }
@@ -55,7 +55,7 @@ export async function reconcileSingleTransfer(
   }
 
   if (
-    payment.payment_status !== "pending" ||
+    !["paid", "partially_refunded", "refunded"].includes(payment.payment_status) ||
     payment.transfer_status !== "processing"
   ) {
     throw new Error("Single-card transfer is not eligible for reconciliation");

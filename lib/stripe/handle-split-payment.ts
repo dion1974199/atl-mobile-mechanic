@@ -125,38 +125,23 @@ export async function handleSplitPaymentSucceeded(
     throw new Error("Unable to record successful split-card payment");
   }
 
-  const { data: serviceRequest, error: requestError } = await admin
-    .from("service_requests")
-    .select("status, customer_confirmed_at, provider_id")
-    .eq("id", payment.request_id)
-    .single();
-
-  if (
-    requestError ||
-    !serviceRequest ||
-    serviceRequest.provider_id !== payment.provider_id
-  ) {
-    throw new Error("Unable to verify split-payment service request");
-  }
-
-  if (
-    serviceRequest.status !== "completed" ||
-    !serviceRequest.customer_confirmed_at
-  ) {
-    // Charge is recorded; mechanic payout remains blocked.
-    // A separate settlement/reconciliation process must revisit this payment.
-    return true;
-  }
-
-  const { data: ready, error: readinessError } = await admin.rpc(
-    "check_split_payment_ready",
+  // Record customer payment independently of mechanic transfer.
+  // This RPC completes the job only when both verified card charges qualify.
+  const { data: ready, error: settlementError } = await admin.rpc(
+    "record_verified_split_payment",
     {
-      payment_id_input: part.service_payment_id,
+      p_payment_id: part.service_payment_id,
     }
   );
 
-  if (readinessError) {
-    throw new Error("Unable to verify split-payment completion");
+  if (settlementError) {
+    throw new Error("Unable to settle verified split-card payment");
+  }
+
+  if (ready !== true) {
+    // One or both card charges are not yet eligible for settlement.
+    // Never initiate a mechanic transfer for an unsettled payment.
+    return true;
   }
 
   if (ready) {

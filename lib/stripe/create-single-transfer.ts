@@ -37,7 +37,7 @@ export async function createSingleTransfer(
     paymentError ||
     !payment ||
     payment.payout_hold_reason != null ||
-    payment.payment_status !== "pending" ||
+    payment.payment_status !== "paid" ||
     payment.transfer_status !== "processing" ||
     payment.stripe_transfer_id ||
     payment.single_transfer_attempted_at

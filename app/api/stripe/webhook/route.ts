@@ -126,16 +126,13 @@ if (!standardEvent && !event) {
     }
 
     if (
-      !(
-        (payment.payment_status === "pending" &&
-          ["not_transferred", "processing"].includes(payment.transfer_status)) ||
-        (payment.payment_status === "paid" &&
-          payment.transfer_status === "transferred")
+      !["pending", "paid", "partially_refunded", "refunded"].includes(
+        payment.payment_status
       ) ||
       payment.split_transfer_attempted_at != null
     ) {
       throw new Error(
-        "Single-card payment is not eligible for transfer or reconciliation"
+        "Single-card payment is not eligible for verified charge processing"
       );
     }
 
@@ -181,7 +178,7 @@ if (!standardEvent && !event) {
     if (
       requestError ||
       !serviceRequest ||
-      serviceRequest.status !== "completed" ||
+      !["work_completed", "completed"].includes(serviceRequest.status) ||
       !serviceRequest.customer_confirmed_at ||
       paymentIntent.metadata.service_request_id !== payment.request_id
     ) {
@@ -205,6 +202,58 @@ if (!standardEvent && !event) {
       transferGroup
     );
 
+    // Never reactivate a refunded payment or initiate another payout.
+    // Reconcile only a transfer that was previously attempted or recorded.
+    if (["refunded", "partially_refunded"].includes(payment.payment_status)) {
+      if (payment.stripe_charge_id !== verifiedChargeId) {
+        throw new Error("Refunded single-card payment charge mismatch");
+      }
+
+      if (
+        payment.single_transfer_attempted_at == null &&
+        payment.stripe_transfer_id == null
+      ) {
+        if (payment.transfer_status === "processing") {
+          throw new Error(
+            "Refunded single-card payment has an unattempted processing claim requiring review"
+          );
+        }
+        return NextResponse.json({ received: true });
+      }
+
+      const reconciled = await reconcileSingleTransfer(
+        stripe,
+        paymentId,
+        payment.request_id,
+        providerStripeAccountId,
+        expectedProviderAmount,
+        transferGroup,
+        verifiedChargeId
+      );
+
+      if (!reconciled) {
+        throw new Error("Refunded single-card transfer requires reconciliation");
+      }
+
+      return NextResponse.json({ received: true });
+    }
+
+    // Record the verified customer charge before considering mechanic payout.
+    const { data: recorded, error: settlementError } = await admin.rpc(
+      "record_verified_single_payment",
+      {
+        p_payment_id: paymentId,
+        p_payment_intent_id: paymentIntent.id,
+        p_charge_id: verifiedChargeId,
+      }
+    );
+
+    if (settlementError || recorded !== true) {
+      throw new Error(
+        `Unable to record verified single-card payment: ${settlementError?.message ?? "settlement not confirmed"}`
+      );
+    }
+
     const { data: newlyClaimed, error: claimError } = await admin.rpc(
       "claim_single_payment_transfer",
       { p_payment_id: paymentId }
@@ -224,6 +273,45 @@ if (!standardEvent && !event) {
         transferGroup,
         true
       );
+    }
+
+    if (newlyClaimed !== true) {
+      const { data: current, error: statusError } = await admin
+        .from("service_payments")
+        .select("payment_status, transfer_status, stripe_charge_id, stripe_transfer_id, single_transfer_attempted_at, payout_hold_reason, stripe_refund_id, stripe_dispute_id")
+        .eq("id", paymentId)
+        .single();
+
+      if (statusError || !current) {
+        throw new Error("Unable to verify current single-card payout state");
+      }
+
+      if (current.stripe_charge_id !== verifiedChargeId) {
+        throw new Error("Single-card charge changed during payout processing");
+      }
+
+      if (current.transfer_status !== "processing" &&
+          current.transfer_status !== "transferred") {
+        // Customer payment is recorded; no mechanic transfer was authorized.
+        return NextResponse.json({ received: true });
+      }
+
+      if (
+        current.transfer_status === "processing" &&
+        (current.payment_status !== "paid" ||
+          current.payout_hold_reason != null ||
+          current.stripe_refund_id != null ||
+          current.stripe_dispute_id != null)
+      ) {
+        // Never initiate another transfer after a refund or dispute.
+        // Only previously attempted transfers may reach reconciliation.
+        if (
+          current.single_transfer_attempted_at == null &&
+          current.stripe_transfer_id == null
+        ) {
+          return NextResponse.json({ received: true });
+        }
+      }
     }
 
     const reconciled = await reconcileSingleTransfer(

@@ -35,7 +35,7 @@ export async function createSplitTransfer(
     payment.payout_hold_reason != null ||
     payment.transfer_status !== "processing" ||
     payment.stripe_transfer_id ||
-    payment.payment_status !== "pending"
+    payment.payment_status !== "paid"
   ) {
     throw new Error("Split transfer is not eligible for creation");
   }
